@@ -1,6 +1,5 @@
 import React, { Component } from 'react';
-
-const serverUrl = 'https://whispering-everglades-17138.herokuapp.com';
+import { getProfile, signInWithCredentials, setSessionToken } from '../../services/api';
 
 class SignIn extends Component {
     constructor(props) {
@@ -24,21 +23,21 @@ class SignIn extends Component {
     };
 
     onButtonSubmit = () => {
-        fetch(`${serverUrl}/signin`, {
-            method: 'post',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                email: this.state.email,
-                password: this.state.password,
-            })
-        })
-            .then(response => response.json())
-            .then(user => {
-                if (user.id) {
-                    this.props.updateUser(user);
-                    this.props.onRouteChange('home');
-                }
-            })
+        const { email, password } = this.state;
+        signInWithCredentials(email, password)(
+            (data) => {
+                if (data.success === true && data.userId && data.token) {
+                    setSessionToken(data.token);
+                    getProfile(data.userId)(
+                        (user) => {
+                            if (user && user.email) {
+                                this.props.updateUser(user);
+                                this.props.onRouteChange('home');
+                            }},
+                        (err) => console.log(err))
+                }},
+            (err) => console.log(err)
+        );
     };
 
     render() {

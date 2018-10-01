@@ -1,6 +1,5 @@
 import React, { Component } from 'react';
-
-const serverUrl = 'https://whispering-everglades-17138.herokuapp.com';
+import { register } from '../../services/api'
 
 class Registration extends Component {
     constructor(props) {
@@ -37,19 +36,14 @@ class Registration extends Component {
             password: this.state.password,
         });
 
-        fetch(`${serverUrl}/register`, {
-            method: 'post',
-            headers: {'Content-Type': 'application/json'},
-            body: newUser,
-        })
-            .then(response => response.json())
-            .then(user => {
+        register(newUser)(
+            (user) => {
                 if (user.id) {
                     this.props.updateUser(user);
                     this.props.onRouteChange('home')
                 }
-            })
-            .catch(console.log);
+            },
+            (err) => console.log(err));
     };
 
     render() {

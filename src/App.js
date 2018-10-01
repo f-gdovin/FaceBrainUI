@@ -1,12 +1,17 @@
-import React, {Component} from 'react';
-import {Particles} from 'react-particles-js';
-import SignIn from './components/auth/SignIn';
-import Registration from './components/auth/Registration';
-import Navigation from './components/navigation/Navigation';
+import React, { Component } from 'react';
+import Particles from 'react-particles-js';
+
 import InputField from './components/input/InputField';
-import OutputImage from './components/output/OutputImage';
 import Logo from './components/logo/Logo';
+import Modal from './components/modal/Modal';
+import Navigation from './components/navigation/Navigation';
+import OutputImage from './components/output/OutputImage';
+import Profile from './components/profile/Profile';
 import Rank from './components/rank/Rank';
+import Registration from './components/auth/Registration';
+import SignIn from './components/auth/SignIn';
+import { signInWithAuthToken, getProfile, getFacesForImage, updateUseCount, getSessionToken } from './services/api';
+
 import './App.css';
 
 const particlesParameters = {
@@ -74,14 +79,13 @@ const particlesParameters = {
     },
 };
 
-const serverUrl = 'https://whispering-everglades-17138.herokuapp.com';
-
 const initialState = {
     input: '',
     imageUrl: '',
     boxes: [],
     route: 'signin',
     isSignedIn: false,
+    isProfileOpen: false,
     user: {
         id: -1,
         name: '',
@@ -97,6 +101,22 @@ class App extends Component {
         this.state = initialState;
     }
 
+    componentDidMount() {
+        const token = getSessionToken();
+        if (token) {
+            signInWithAuthToken(token)((data) => {
+                if (data && data.id) {
+                    getProfile(data.id)((user) => {
+                        if (user && user.email) {
+                            this.updateUser(user);
+                            this.onRouteChange('home');
+                        }
+                    }, (err) => console.log(err))
+                }
+            }, (err) => console.log(err));
+        }
+    }
+
     updateUser = (newUser) => {
         this.setState({
             user: {
@@ -110,7 +130,6 @@ class App extends Component {
     };
 
     onInputChange = (event) => {
-        console.log(event.target.value);
         this.setState({
             input: event.target.value
         });
@@ -118,35 +137,22 @@ class App extends Component {
 
     onPictureSubmit = () => {
         const inputValue = this.state.input;
+
         this.setState({
             imageUrl: inputValue,
         });
-        fetch(`${serverUrl}/imageurl`, {
-            method: 'post',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                input: inputValue,
-            })
-        })
-            .then(response => response.json())
-            .then(response => {
-                if (response) {
-                    fetch(`${serverUrl}/image`, {
-                        method: 'put',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            id: this.state.user.id,
-                        })
-                    })
-                        .then(response => response.json())
-                        .then(useCount => {
+        getFacesForImage(inputValue)(
+            (data) => {
+                if (data) {
+                    updateUseCount(this.state.user.id)(
+                        (useCount) => {
                             this.setState(Object.assign(this.state.user, {useCount: useCount}));
-                        })
-                        .catch(err => console.log(err));
+                        },
+                        (err) => console.log(err));
+                    this.calculateFaceLocations(data);
                 }
-                this.calculateFaceLocations(response);
-            })
-            .catch(err => console.log(err));
+            },
+            (err) => console.log(err));
     };
 
     onRouteChange = (route) => {
@@ -163,45 +169,59 @@ class App extends Component {
     };
 
     calculateFaceLocations = (response) => {
-        const boxes = [];
-        const image = document.getElementById('face_image');
-        const width = Number(image.width);
-        const height = Number(image.height);
+        if (response && response.outputs) {
+            const boxes = [];
+            const image = document.getElementById('face_image');
+            const width = Number(image.width);
+            const height = Number(image.height);
 
-        // get all the faces
-        const regions = response.outputs[0].data.regions;
-        for (let region of regions) {
-            const box = region.region_info.bounding_box;
-            boxes.push({
-                leftCol: box.left_col * width,
-                topRow: box.top_row * height,
-                rightCol: width - (box.right_col * width),
-                bottomRow: height - (box.bottom_row * height),
-            })
+            // get all the faces
+            const regions = response.outputs[0].data.regions;
+            for (let region of regions) {
+                const box = region.region_info.bounding_box;
+                boxes.push({
+                    leftCol: box.left_col * width,
+                    topRow: box.top_row * height,
+                    rightCol: width - (box.right_col * width),
+                    bottomRow: height - (box.bottom_row * height),
+                })
+            }
+            this.setState({
+                boxes: boxes,
+            });
         }
-        this.setState({
-            boxes: boxes,
-        });
+    };
+
+    toggleProfileInfo = () => {
+        this.setState(prevState => ({
+            ...prevState,
+           isProfileOpen: !prevState.isProfileOpen,
+        }))
     };
 
     render() {
-        const {isSignedIn, imageUrl, route, boxes, user} = this.state;
+        const {isSignedIn, isProfileOpen, imageUrl, route, boxes, user} = this.state;
         return (
             <div className="App">
                 <Particles className='particles'
                            params={particlesParameters}
                 />
-                <Navigation isSignedIn={isSignedIn} onRouteChange={this.onRouteChange}/>
-                {route === 'home'
+                <Navigation isSignedIn={ isSignedIn } onRouteChange={ this.onRouteChange } toggleProfileInfo={ this.toggleProfileInfo } />
+                { isProfileOpen &&
+                    <Modal>
+                        <Profile user={ user } updateUser={ this.updateUser } toggleProfileInfo={ this.toggleProfileInfo } />
+                    </Modal>
+                }
+                { route === 'home'
                     ? <div>
                         <Logo/>
-                        <Rank name={user.name} useCount={user.useCount}/>
-                        <InputField onInputChange={this.onInputChange} onPictureSubmit={this.onPictureSubmit}/>
-                        <OutputImage faceBoxes={boxes} imageUrl={imageUrl}/>
+                        <Rank name={ user.name } useCount={ user.useCount } />
+                        <InputField onInputChange={ this.onInputChange } onPictureSubmit={ this.onPictureSubmit } />
+                        <OutputImage faceBoxes={ boxes } imageUrl={ imageUrl } />
                     </div>
                     : route === 'signin'
-                        ? <SignIn updateUser={this.updateUser} onRouteChange={this.onRouteChange}/>
-                        : <Registration updateUser={this.updateUser} onRouteChange={this.onRouteChange}/>
+                        ? <SignIn updateUser={ this.updateUser } onRouteChange={ this.onRouteChange } />
+                        : <Registration updateUser={ this.updateUser } onRouteChange={ this.onRouteChange } />
                 }
             </div>
         );
