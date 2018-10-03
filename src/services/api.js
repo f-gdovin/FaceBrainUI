@@ -1,4 +1,5 @@
 export const serverUrl = process.env.REACT_APP_SERVER_URL;
+export const awsLambdaUrl = process.env.REACT_APP_AWS_LAMBDA_URL;
 
 export const register = (body) => (success, failure) => {
     fetch(`${serverUrl}/register`, {
